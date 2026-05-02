@@ -1,5 +1,8 @@
 mod forwarder;
 mod handler;
+mod interceptor;
+mod plugin;
+mod openaichatcompletion;
 
 use axum::routing::any;
 use axum::Router;
