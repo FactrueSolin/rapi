@@ -34,6 +34,33 @@ impl Forwarder {
         headers: HeaderMap,
         body: Body,
     ) -> Result<Response<Body>, (StatusCode, String)> {
+        let reqwest_body = reqwest::Body::wrap_stream(body.into_data_stream());
+        self.do_forward(target_url, method, headers, reqwest_body).await
+    }
+
+    pub async fn forward_with_bytes(
+        &self,
+        target_url: &str,
+        method: Method,
+        mut headers: HeaderMap,
+        body: Vec<u8>,
+    ) -> Result<Response<Body>, (StatusCode, String)> {
+        if let Ok(len) = u32::try_from(body.len()) {
+            if let Ok(val) = axum::http::HeaderValue::from_str(&len.to_string()) {
+                headers.insert(axum::http::header::CONTENT_LENGTH, val);
+            }
+        }
+        let reqwest_body = reqwest::Body::from(body);
+        self.do_forward(target_url, method, headers, reqwest_body).await
+    }
+
+    async fn do_forward(
+        &self,
+        target_url: &str,
+        method: Method,
+        headers: HeaderMap,
+        body: reqwest::Body,
+    ) -> Result<Response<Body>, (StatusCode, String)> {
         let parsed_url = url::Url::parse(target_url)
             .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid target URL: {}", e)))?;
 
@@ -49,9 +76,7 @@ impl Forwarder {
             }
         }
 
-        let hyper_body = body;
-        let reqwest_body = reqwest::Body::wrap_stream(hyper_body.into_data_stream());
-        request_builder = request_builder.body(reqwest_body);
+        request_builder = request_builder.body(body);
 
         let response = request_builder
             .send()

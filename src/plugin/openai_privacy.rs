@@ -1,6 +1,11 @@
+use async_trait::async_trait;
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use thiserror::Error;
+
+use super::{Plugin, PluginMessageView, PluginResult};
+use super::types::{MessageReplacements, Replacement};
 
 #[derive(Error, Debug)]
 pub enum OpenAiPrivacyError {
@@ -40,8 +45,12 @@ pub struct OpenAiPrivacyClient {
 
 impl OpenAiPrivacyClient {
     pub fn new(base_url: impl Into<String>) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build HTTP client");
         Self {
-            client: reqwest::Client::new(),
+            client,
             base_url: base_url.into().trim_end_matches('/').to_string(),
         }
     }
@@ -107,5 +116,92 @@ impl OpenAiPrivacyClient {
             .map(|text| self.redact(text))
             .collect();
         join_all(futures).await
+    }
+}
+
+pub struct OpenAiPrivacyPlugin {
+    client: OpenAiPrivacyClient,
+}
+
+impl OpenAiPrivacyPlugin {
+    pub fn new(client: OpenAiPrivacyClient) -> Self {
+        Self { client }
+    }
+
+    pub fn from_env() -> Self {
+        Self::new(OpenAiPrivacyClient::from_env())
+    }
+}
+
+#[async_trait]
+impl Plugin for OpenAiPrivacyPlugin {
+    fn name(&self) -> &str {
+        "openai_privacy"
+    }
+
+    async fn process(&self, messages: &PluginMessageView) -> Result<PluginResult, String> {
+        let entries = messages.entries();
+        if entries.is_empty() {
+            return Ok(PluginResult {
+                message_replacements: Vec::new(),
+            });
+        }
+
+        let start = Instant::now();
+        let texts: Vec<String> = entries.iter().map(|e| e.text().to_string()).collect();
+        let results = self.client.redact_concurrent(&texts).await;
+
+        let mut message_replacements = Vec::new();
+        let mut success_count = 0;
+        let mut error_count = 0;
+
+        for (i, result) in results.into_iter().enumerate() {
+            match result {
+                Ok(redact_result) => {
+                    let entry = &entries[i];
+                    message_replacements.push(MessageReplacements {
+                        message_index: entry.index(),
+                        replacements: vec![Replacement {
+                            original: entry.text().to_string(),
+                            replacement: redact_result.redacted_text,
+                        }],
+                    });
+                    success_count += 1;
+                }
+                Err(e) => {
+                    error_count += 1;
+                    let error_type = match &e {
+                        OpenAiPrivacyError::HttpError(http_err) => {
+                            if http_err.is_timeout() {
+                                "timeout"
+                            } else if http_err.is_connect() {
+                                "connection_failed"
+                            } else {
+                                "http_error"
+                            }
+                        }
+                        OpenAiPrivacyError::ServiceUnavailable(_) => "service_unavailable",
+                        OpenAiPrivacyError::JsonError(_) => "parse_error",
+                    };
+                    eprintln!(
+                        "[openai_privacy] {} on message {} (index {}): {}",
+                        error_type, i, entries[i].index(), e
+                    );
+                }
+            }
+        }
+
+        let elapsed = start.elapsed();
+        eprintln!(
+            "[openai_privacy] Processed {} messages: {} succeeded, {} failed, elapsed={:?}",
+            entries.len(),
+            success_count,
+            error_count,
+            elapsed
+        );
+
+        Ok(PluginResult {
+            message_replacements,
+        })
     }
 }

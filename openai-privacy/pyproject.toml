@@ -1,0 +1,21 @@
+[project]
+name = "openai-privacy"
+version = "0.1.0"
+description = "OpenAI Privacy Filter FastAPI Service"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "opf @ file:///home/tianci/rapi/privacy-filter",
+]
+
+[project.scripts]
+openai-privacy = "openai_privacy.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
