@@ -141,14 +141,21 @@ impl Plugin for OpenAiPrivacyPlugin {
 
     async fn process(&self, messages: &PluginMessageView) -> Result<PluginResult, String> {
         let entries = messages.entries();
-        if entries.is_empty() {
+
+        // Only process system, developer, and user messages
+        let filtered_entries: Vec<_> = entries
+            .iter()
+            .filter(|e| e.role() != "assistant")
+            .collect();
+
+        if filtered_entries.is_empty() {
             return Ok(PluginResult {
                 message_replacements: Vec::new(),
             });
         }
 
         let start = Instant::now();
-        let texts: Vec<String> = entries.iter().map(|e| e.text().to_string()).collect();
+        let texts: Vec<String> = filtered_entries.iter().map(|e| e.text().to_string()).collect();
         let results = self.client.redact_concurrent(&texts).await;
 
         let mut message_replacements = Vec::new();
@@ -158,7 +165,7 @@ impl Plugin for OpenAiPrivacyPlugin {
         for (i, result) in results.into_iter().enumerate() {
             match result {
                 Ok(redact_result) => {
-                    let entry = &entries[i];
+                    let entry = filtered_entries[i];
                     message_replacements.push(MessageReplacements {
                         message_index: entry.index(),
                         replacements: vec![Replacement {
@@ -185,7 +192,7 @@ impl Plugin for OpenAiPrivacyPlugin {
                     };
                     eprintln!(
                         "[openai_privacy] {} on message {} (index {}): {}",
-                        error_type, i, entries[i].index(), e
+                        error_type, i, filtered_entries[i].index(), e
                     );
                 }
             }
@@ -194,7 +201,7 @@ impl Plugin for OpenAiPrivacyPlugin {
         let elapsed = start.elapsed();
         eprintln!(
             "[openai_privacy] Processed {} messages: {} succeeded, {} failed, elapsed={:?}",
-            entries.len(),
+            filtered_entries.len(),
             success_count,
             error_count,
             elapsed
