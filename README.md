@@ -1,23 +1,26 @@
 # rapi
 
-基于 Rust 构建的透明 HTTP 转发器，拦截 OpenAI Chat Completion API 请求，并在转发至上游前自动脱敏个人身份信息（PII）。
+基于 Rust 构建的透明 HTTP 转发器，拦截 OpenAI Chat Completion API 和 Anthropic Messages API 请求，并在转发至上游前自动脱敏个人身份信息（PII）。
 
 ## 概述
 
-`rapi` 充当客户端与 OpenAI 兼容 API 端点之间的隐私保护代理。它透明地转发所有 HTTP 流量，同时选择性地拦截 `/chat/completions` 请求，使用 [OpenAI Privacy Filter](https://github.com/openai/privacy-filter) 模型扫描并脱敏敏感数据。
+`rapi` 充当客户端与 OpenAI 兼容或 Anthropic 兼容 API 端点之间的隐私保护代理。它透明地转发所有 HTTP 流量，同时选择性地拦截 `/chat/completions` 和 `/v1/messages` 请求，使用 [OpenAI Privacy Filter](https://github.com/openai/privacy-filter) 模型扫描并脱敏敏感数据。
 
 ## 特性
 
-- **透明转发**: 将任何 HTTP 请求代理到通过 `?target=` 查询参数指定的目标 URL。默认情况下，所有方法、请求头和请求体均原样转发。
-- **自动 PII 脱敏**: 拦截发往 `/chat/completions` 端点的请求，在转发前脱敏敏感信息，包括：
-  - 姓名
-  - 电子邮件地址
-  - 电话号码
-  - 物理地址
-  - 日期
-  - 账号
-  - URL
-  - 机密/凭证
+- **透明转发**: 将任何 HTTP 请求代理到通过 `target` 请求头或 `?target=` 查询参数指定的目标 URL。默认情况下，所有方法、请求头和请求体均原样转发。
+- **自动 PII 脱敏**: 拦截发往以下端点的请求，在转发前脱敏敏感信息，包括：
+  - **OpenAI**: `/chat/completions`
+  - **Anthropic**: `/v1/messages`
+  - 脱敏内容类型：
+    - 姓名
+    - 电子邮件地址
+    - 电话号码
+    - 物理地址
+    - 日期
+    - 账号
+    - URL
+    - 机密/凭证
 - **插件架构**: 可扩展的插件系统，用于处理聊天消息。插件并发运行，其替换操作会被智能合并。
 - **流式支持**: 通过流式处理请求/响应体，高效利用内存，适用于大型负载。
 - **逐跳请求头过滤**: 按照 HTTP 代理标准正确移除逐跳（hop-by-hop）请求头。
@@ -35,7 +38,7 @@
      |
      v
 +------------------+
-| forward_handler  |  提取 ?target= URL，读取请求
+| forward_handler  |  提取 target URL（请求头或查询参数），读取请求
 +------------------+
      |
      v
@@ -43,11 +46,12 @@
 | 是否拦截?        | ----------> | intercept_body()  |
 | (路径以          |             | - 解析 JSON 请求体 |
 | /chat/completions|             | - 提取消息        |
-| 结尾)            |             | - 运行插件        |
-+------------------+             | - 重建请求体      |
-     | 否                        +-------------------+
-     v                                     |
-+------------------+ <---------------------+
+| 或 /v1/messages  |             | - 运行插件        |
+| 结尾)            |             | - 重建请求体      |
++------------------+             +-------------------+
+     | 否                               |
+     v                                  |
++------------------+ <-----------------+
 | forward.forward()|
 | (流式处理请求体)  |
 +------------------+
