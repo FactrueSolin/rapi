@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 import torch
 import uvicorn
-from opf import OPF, RedactionResult
+from openai_privacy.opf import OPF, RedactionResult
 from pydantic import BaseModel, Field
 
 from fastapi import FastAPI
