@@ -22,13 +22,13 @@ pub async fn forward_handler(
     Query(params): Query<HashMap<String, String>>,
     request: Request<Body>,
 ) -> Response {
-    let target_url = headers
+    let target_str = headers
         .get("target")
         .and_then(|v| v.to_str().ok())
         .map(String::from)
         .or_else(|| params.get("target").cloned());
 
-    let target_url = match target_url {
+    let target_str = match target_str {
         Some(url) => url,
         None => {
             return (
@@ -39,10 +39,45 @@ pub async fn forward_handler(
         }
     };
 
-    let (parts, body) = request.into_parts();
-    let path = parts.uri.path().to_string();
+    let target_base = match url::Url::parse(&target_str) {
+        Ok(u) => u,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid target URL: {}", e),
+            )
+                .into_response();
+        }
+    };
 
-    let intercept_type = interceptor::should_intercept(&path);
+    let (parts, body) = request.into_parts();
+    let original_path = parts.uri.path();
+
+    let mut filtered_query: Vec<(String, String)> = params
+        .into_iter()
+        .filter(|(k, _)| k != "target")
+        .collect();
+    filtered_query.sort_by_key(|(k, _)| k.clone());
+
+    let query_string = if filtered_query.is_empty() {
+        String::new()
+    } else {
+        let encoded: Vec<String> = filtered_query
+            .iter()
+            .map(|(k, v)| format!("{}={}", url::form_urlencoded::byte_serialize(k.as_bytes()).collect::<String>(), url::form_urlencoded::byte_serialize(v.as_bytes()).collect::<String>()))
+            .collect();
+        format!("?{}", encoded.join("&"))
+    };
+
+    let final_url = format!(
+        "{}://{}{}{}",
+        target_base.scheme(),
+        target_base.authority(),
+        original_path,
+        query_string
+    );
+
+    let intercept_type = interceptor::should_intercept(original_path);
 
     if !matches!(intercept_type, interceptor::InterceptType::None) {
         let body_bytes = match to_bytes(body, usize::MAX).await {
@@ -61,7 +96,7 @@ pub async fn forward_handler(
             }
         };
 
-        match state.forwarder.forward_with_bytes(&target_url, parts.method, parts.headers, modified_body).await {
+        match state.forwarder.forward_with_bytes(&final_url, parts.method, parts.headers, modified_body).await {
             Ok(response) => response.into_response(),
             Err((status, message)) => {
                 eprintln!("Forward error: {}", message);
@@ -69,7 +104,7 @@ pub async fn forward_handler(
             }
         }
     } else {
-        match state.forwarder.forward(&target_url, parts.method, parts.headers, body).await {
+        match state.forwarder.forward(&final_url, parts.method, parts.headers, body).await {
             Ok(response) => response.into_response(),
             Err((status, message)) => {
                 eprintln!("Forward error: {}", message);
