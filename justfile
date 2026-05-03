@@ -25,7 +25,7 @@ start-rust-dev:
     @command -v cargo >/dev/null 2>&1 || { echo "ERROR: 'cargo' is not installed. Please install Rust first:"; echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"; exit 1; }
     @echo "  ✓ cargo found: $(cargo --version)"
     @echo "[2/2] Starting Rust API service..."
-    @cd {{justfile_directory()}} && cargo run
+    @cd {{justfile_directory()}} && cargo run --bin rapi
 
 # Start Rust API service (release mode)
 # Uses cargo run --release for optimized performance
@@ -36,7 +36,7 @@ start-rust:
     @command -v cargo >/dev/null 2>&1 || { echo "ERROR: 'cargo' is not installed. Please install Rust first:"; echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"; exit 1; }
     @echo "  ✓ cargo found: $(cargo --version)"
     @echo "[2/2] Starting Rust API service..."
-    @cd {{justfile_directory()}} && cargo run --release
+    @cd {{justfile_directory()}} && cargo run --release --bin rapi
 
 # Start openai-privacy service
 # Performs: uv sync, pull model, start API server
