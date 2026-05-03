@@ -1,7 +1,7 @@
 use axum::body::Body;
 use axum::body::to_bytes;
 use axum::extract::{Query, Request, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,15 +18,22 @@ pub struct AppState {
 
 pub async fn forward_handler(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
     request: Request<Body>,
 ) -> Response {
-    let target_url = match params.get("target") {
-        Some(url) => url.clone(),
+    let target_url = headers
+        .get("target")
+        .and_then(|v| v.to_str().ok())
+        .map(String::from)
+        .or_else(|| params.get("target").cloned());
+
+    let target_url = match target_url {
+        Some(url) => url,
         None => {
             return (
                 StatusCode::BAD_REQUEST,
-                "Missing required query parameter: target",
+                "Missing required target: provide via 'target' header or query parameter",
             )
                 .into_response();
         }
@@ -35,7 +42,9 @@ pub async fn forward_handler(
     let (parts, body) = request.into_parts();
     let path = parts.uri.path().to_string();
 
-    if interceptor::should_intercept(&path) {
+    let intercept_type = interceptor::should_intercept(&path);
+
+    if !matches!(intercept_type, interceptor::InterceptType::None) {
         let body_bytes = match to_bytes(body, usize::MAX).await {
             Ok(bytes) => bytes.to_vec(),
             Err(e) => {
@@ -44,7 +53,7 @@ pub async fn forward_handler(
             }
         };
 
-        let modified_body = match interceptor::intercept_body(&body_bytes, &state.plugin_registry).await {
+        let modified_body = match interceptor::intercept_body(&body_bytes, intercept_type, &state.plugin_registry).await {
             Ok(b) => b,
             Err(e) => {
                 eprintln!("Interceptor error: {}", e);

@@ -1,3 +1,4 @@
+use crate::anthropicmessage::{ExtractedMessages as AnthropicExtractedMessages, MessageRef as AnthropicMessageRef, MessageSource};
 use crate::openaichatcompletion::{ExtractedMessages, MessageRef};
 
 pub struct Replacement {
@@ -82,5 +83,47 @@ impl PluginMessageView {
             .iter()
             .find(|e| e.index == index)
             .map(|e| e.role.as_str())
+    }
+
+    pub fn from_anthropic_extracted(extracted: &AnthropicExtractedMessages) -> Self {
+        let mut entries = Vec::new();
+
+        const SYSTEM_INDEX: usize = usize::MAX;
+
+        if let Some(ref sys_ref) = extracted.system {
+            if let Some(text) = extracted.get_text(sys_ref) {
+                entries.push(MessageEntry {
+                    index: SYSTEM_INDEX,
+                    role: "system".to_string(),
+                    text,
+                });
+            }
+        }
+
+        let all_refs: Vec<(&[AnthropicMessageRef], &str)> = vec![
+            (&extracted.user, "user"),
+            (&extracted.assistant, "assistant"),
+        ];
+
+        for (refs, role) in all_refs {
+            for msg_ref in refs {
+                if let Some(text) = extracted.get_text(msg_ref) {
+                    let index = match msg_ref.source() {
+                        MessageSource::Messages(idx) => *idx,
+                        MessageSource::System => SYSTEM_INDEX,
+                    };
+
+                    entries.push(MessageEntry {
+                        index,
+                        role: role.to_string(),
+                        text,
+                    });
+                }
+            }
+        }
+
+        entries.sort_by_key(|e| e.index);
+
+        Self { entries }
     }
 }

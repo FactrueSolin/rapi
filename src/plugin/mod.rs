@@ -7,6 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures::future::join_all;
 
+use crate::anthropicmessage::{ExtractedMessages as AnthropicExtractedMessages, MessageRef as AnthropicMessageRef, MessageSource};
 use crate::openaichatcompletion::{ExtractedMessages, MessageRef};
 
 use self::types::{PluginMessageView, PluginResult, Replacement};
@@ -74,6 +75,63 @@ impl PluginRegistry {
         let mut extracted = extracted;
         for (index, replacements) in replacements_by_index {
             let msg_ref = MessageRef::new(index);
+            if let Some(current_text) = extracted.get_text(&msg_ref) {
+                let new_text = merge_replacements(&current_text, replacements);
+                extracted.set_text(&msg_ref, new_text);
+            }
+        }
+
+        Ok(extracted)
+    }
+
+    pub async fn process_anthropic_messages(
+        &self,
+        extracted: AnthropicExtractedMessages,
+        extracted_view: &PluginMessageView,
+    ) -> Result<AnthropicExtractedMessages, String> {
+        const SYSTEM_INDEX: usize = usize::MAX;
+
+        let futures: Vec<_> = self
+            .plugins
+            .iter()
+            .map(|plugin| {
+                let plugin = plugin.clone();
+                let view = &extracted_view;
+                async move {
+                    let result = plugin.process(view).await;
+                    (plugin.name().to_string(), result)
+                }
+            })
+            .collect();
+
+        let results = join_all(futures).await;
+
+        let mut replacements_by_source: HashMap<MessageSource, Vec<Replacement>> = HashMap::new();
+
+        for (plugin_name, result) in results {
+            match result {
+                Ok(plugin_result) => {
+                    for msg_repl in plugin_result.message_replacements {
+                        let source = if msg_repl.message_index == SYSTEM_INDEX {
+                            MessageSource::System
+                        } else {
+                            MessageSource::Messages(msg_repl.message_index)
+                        };
+                        replacements_by_source
+                            .entry(source)
+                            .or_default()
+                            .extend(msg_repl.replacements);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Plugin '{}' error: {}", plugin_name, e);
+                }
+            }
+        }
+
+        let mut extracted = extracted;
+        for (source, replacements) in replacements_by_source {
+            let msg_ref = AnthropicMessageRef::from_source(source);
             if let Some(current_text) = extracted.get_text(&msg_ref) {
                 let new_text = merge_replacements(&current_text, replacements);
                 extracted.set_text(&msg_ref, new_text);
