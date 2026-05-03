@@ -81,6 +81,8 @@ cp .env.example .env
 | `PORT` | 监听端口 | `3000` |
 | `OPENAI_PRIVACY_URL` | OpenAI Privacy Filter 服务的 URL | `http://localhost:8000` |
 
+**注意**: 目标 URL 可以通过 `target` 请求头或 `?target=` 查询参数指定。请求头方式优先级更高。
+
 ### 构建与运行
 
 ```bash
@@ -90,7 +92,9 @@ cargo run --release
 
 ### 使用方法
 
-通过附加 `?target=` 查询参数将请求发送至转发器：
+通过 `target` 请求头或 `?target=` 查询参数将请求发送至转发器：
+
+#### OpenAI Chat Completion API
 
 ```bash
 curl -X POST "http://localhost:3000/v1/chat/completions?target=https://api.openai.com/v1/chat/completions" \
@@ -104,8 +108,25 @@ curl -X POST "http://localhost:3000/v1/chat/completions?target=https://api.opena
   }'
 ```
 
+#### Anthropic Messages API
+
+```bash
+curl -X POST "http://localhost:3000/v1/messages?target=https://api.anthropic.com/v1/messages" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "max_tokens": 1024,
+    "system": "You are a helpful assistant.",
+    "messages": [
+      {"role": "user", "content": "我的电话是 138-0013-8000，请帮我..."}
+    ]
+  }'
+```
+
 转发器将执行以下步骤：
-1. 检测 `/chat/completions` 路径
+1. 检测 `/chat/completions` 或 `/v1/messages` 路径
 2. 从请求体中提取消息
 3. 将消息发送至 Privacy Filter 服务进行 PII 检测
 4. 在请求体中脱敏检测到的 PII
@@ -128,6 +149,9 @@ rapi/
 │   ├── interceptor.rs           # 路径匹配与请求体处理
 │   ├── openaichatcompletion/    # OpenAI Chat Completion JSON 解析
 │   │   └── mod.rs
+│   ├── anthropicmessage/        # Anthropic Messages JSON 解析
+│   │   ├── mod.rs
+│   │   └── types.rs
 │   └── plugin/
 │       ├── mod.rs               # 插件 trait 与并发执行
 │       ├── types.rs             # 插件数据类型 (Replacement, PluginResult)
@@ -135,6 +159,9 @@ rapi/
 ├── echo_server.rs               # 调试工具二进制文件（记录传入请求）
 ├── openai-privacy/              # Privacy Filter 的 Python FastAPI 封装
 ├── privacy-filter/              # OpenAI Privacy Filter 模型（15 亿参数）
+├── anthropic-sdk-python/        # Anthropic Python SDK（用于测试）
+├── openai-python/               # OpenAI Python SDK（用于测试）
+├── workflow/                    # 工作流相关脚本
 └── just/                        # 测试脚本与基准测试
 ```
 
@@ -152,7 +179,8 @@ rapi/
 ```rust
 #[async_trait]
 pub trait Plugin: Send + Sync {
-    async fn process(&self, messages: Vec<PluginMessageView>) -> Result<PluginResult>;
+    fn name(&self) -> &str;
+    async fn process(&self, messages: &PluginMessageView) -> Result<PluginResult, String>;
 }
 ```
 
