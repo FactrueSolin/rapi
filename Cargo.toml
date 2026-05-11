@@ -20,3 +20,4 @@ futures = "0.3"
 dotenvy = "0.15"
 async-trait = "0.1"
 http-body-util = "0.1"
+hf-hub = { version = "0.5", default-features = false, features = ["tokio", "rustls-tls"] }
