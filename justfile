@@ -74,3 +74,23 @@ perf-openai-privacy base_url="http://localhost:8000" concurrency="10" requests="
     @echo "Requests per benchmark: {{requests}}"
     @echo ""
     @python3 {{justfile_directory()}}/just/perf_test_openai_privacy.py --base-url "{{base_url}}" --concurrency {{concurrency}} --requests {{requests}}
+
+# Run Rust privacy-filter Q4 inference tests
+# Downloads/uses the Q4 model cache under .model unless PRIVACY_FILTER_MODEL_CACHE_DIR is set
+test-rust-privacy-filter:
+    @echo "=== Running Rust Privacy Filter Q4 Tests ==="
+    @echo ""
+    @sh {{justfile_directory()}}/tests/privacy_filter_inference.sh
+    @sh {{justfile_directory()}}/tests/privacy_filter_invalid_input.sh
+
+# Run only Rust privacy-filter Q4 inference happy-path tests
+test-rust-privacy-filter-inference:
+    @echo "=== Running Rust Privacy Filter Q4 Inference Tests ==="
+    @echo ""
+    @sh {{justfile_directory()}}/tests/privacy_filter_inference.sh
+
+# Run only Rust privacy-filter invalid-input and injection rejection tests
+test-rust-privacy-filter-invalid-input:
+    @echo "=== Running Rust Privacy Filter Invalid Input Tests ==="
+    @echo ""
+    @sh {{justfile_directory()}}/tests/privacy_filter_invalid_input.sh
