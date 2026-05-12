@@ -26,7 +26,8 @@ pub use onnx_session::{
     OnnxSessionError, OnnxSessionOptions, OnnxTensorDType, PrivacyFilterOnnxSession, WindowLogits,
 };
 pub use pipeline::{
-    PrivacyFilterPipeline, PrivacyFilterPipelineError, PrivacyFilterPipelineOptions,
+    PrivacyFilterPipeline, PrivacyFilterPipelineError, PrivacyFilterPipelineMetrics,
+    PrivacyFilterPipelineOptions, PrivacyFilterPipelineRun,
 };
 pub use redaction::{DetectedSpan, DetectionSummary, OutputMode, RedactionError, RedactionResult};
 pub use scoring::{ScoringError, TokenScores};

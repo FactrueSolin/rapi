@@ -1,4 +1,6 @@
-hf-hub 下载模型
-tokenizers 负责 tokenizer
-ort 负责 ONNX 推理
-你自己写很薄的 token-classification 后处理
+- [*]hf-hub 下载模型
+- [*]tokenizers 负责 tokenizer
+- [*] ort 负责 ONNX 推理
+- [*] 你自己写很薄的 token-classification 后处理
+- [*]针对macos CPU推理的性能测试
+- [*]针对macos CoreML推理的性能测试 

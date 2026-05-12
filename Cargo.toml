@@ -11,6 +11,10 @@ path = "src/echo_server.rs"
 name = "privacy_filter_test_cli"
 path = "tests/bin/privacy_filter_test_cli.rs"
 
+[[bin]]
+name = "privacy_filter_perf"
+path = "tests/bin/privacy_filter_perf.rs"
+
 [dependencies]
 axum = "0.8"
 reqwest = { version = "0.12", features = ["stream", "json"] }
